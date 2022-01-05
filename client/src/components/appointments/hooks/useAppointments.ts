@@ -1,6 +1,13 @@
 // @ts-nocheck
 import dayjs from 'dayjs';
-import { Dispatch, SetStateAction, useState } from 'react';
+import {
+  Dispatch,
+  SetStateAction,
+  useCallback,
+  useEffect,
+  useState,
+} from 'react';
+import { useQuery, useQueryClient } from 'react-query';
 
 import { axiosInstance } from '../../../axiosInstance';
 import { queryKeys } from '../../../react-query/constants';
@@ -8,6 +15,8 @@ import { useUser } from '../../user/hooks/useUser';
 import { AppointmentDateMap } from '../types';
 import { getAvailableAppointments } from '../utils';
 import { getMonthYearDetails, getNewMonthYear, MonthYear } from './monthYear';
+
+const commonOptions = { staleTime: 0, cacheTime: 300000 };
 
 // for useQuery call
 async function getAppointments(
@@ -59,18 +68,37 @@ export function useAppointments(): UseAppointments {
   //   appointments that the logged-in user has reserved (in white)
   const { user } = useUser();
 
+  const selectFn = useCallback((data) => getAvailableAppointments(data), []);
+
   /** ****************** END 2: filter appointments  ******************** */
   /** ****************** START 3: useQuery  ***************************** */
-  // useQuery call for appointments for the current monthYear
 
-  // TODO: update with useQuery!
-  // Notes:
-  //    1. appointments is an AppointmentDateMap (object with days of month
-  //       as properties, and arrays of appointments for that day as values)
-  //
-  //    2. The getAppointments query function needs monthYear.year and
-  //       monthYear.month
-  const appointments = {};
+  const { data: appointments = {} } = useQuery(
+    [queryKeys.appointments, monthYear.year, monthYear.month],
+    () => getAppointments(monthYear.year, monthYear.month),
+    {
+      select: showAll ? undefined : selectFn,
+      ...commonOptions,
+      refetchOnMount: true,
+      refetchOnReconnect: true,
+      refetchOnWindowFocus: true,
+      refetchInterval: 60000,
+    },
+  );
+
+  const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const newMonthYear = getNewMonthYear(monthYear, 1);
+
+    queryClient.prefetchQuery(
+      [queryKeys.appointments, newMonthYear.year, newMonthYear.month],
+      () =>
+        getAppointments(newMonthYear.year, newMonthYear.month, {
+          ...commonOptions,
+        }),
+    );
+  }, [queryClient, monthYear]);
 
   /** ****************** END 3: useQuery  ******************************* */
 
